@@ -9,5 +9,5 @@ chown root:mysql /opt/letsencrypt/*.pem
 chmod 640 /opt/letsencrypt/*.pem
 
 if [ -f /var/lib/mysql/$(hostname).pid ] ; then
-	#mysql -e "FLUSH SSL;"
+	mysql -e "FLUSH SSL;"
 fi
