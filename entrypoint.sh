@@ -35,7 +35,7 @@ function check_pass() {
 # generate a random pass and check constraints
 function random_pass() {
 	while [ 1 ] ; do
-		pass=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9!"#$%&'\''()*+,-./:;<=>?@[\]^_`{|}~' | fold -w $PASSWORD_LENGTH | head -n 1)
+		pass=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9!#$&()*+,-./:;<=>?@[]^`{|}~' | fold -w $PASSWORD_LENGTH | head -n 1)
 		check_pass "$pass"
 		if [ $? -eq 0 ] ; then
 			break
@@ -45,19 +45,22 @@ function random_pass() {
 }
 
 # default values
-ROOT_NAME="${ROOT_NAME:-root}"
-ROOT_HOST="${ROOT_HOST:-localhost}"
-ROOT_METHOD="${ROOT_METHOD:-password}"
-USER_DATABASE="${USER_DATABASE:-${USER_NAME}_db}"
-USER_PRIVILEGES="${USER_PRIVILEGES:-ALTER, CREATE, DELETE, DROP, INDEX, INSERT, REFERENCES, SELECT, UPDATE}"
-USE_AUTH_ED25519="${USE_AUTH_ED25519:-no}"
-USE_SIMPLE_PASSWORD_CHECK="${USE_SIMPLE_PASSWORD_CHECK:-yes}"
-PASSWORD_LENGTH="${PASSWORD_LENGTH:-12}"
-PASSWORD_DIGITS="${PASSWORD_DIGITS:-1}"
-PASSWORD_LETTERS="${PASSWORD_LETTERS:-1}"
-PASSWORD_SPECIALS="${PASSWORD_SPECIALS:-1}"
-AUTO_LETS_ENCRYPT="${AUTO_LETS_ENCRYPT:-no}"
-SERVER_NAME="${SERVER_NAME:-your.domain.net}"
+ROOT_NAME="${ROOT_NAME-root}"
+ROOT_HOST="${ROOT_HOST-localhost}"
+ROOT_METHOD="${ROOT_METHOD-password}"
+USER_DATABASE="${USER_DATABASE-${USER_NAME}_db}"
+USER_PRIVILEGES="${USER_PRIVILEGES-ALTER, CREATE, DELETE, DROP, INDEX, INSERT, REFERENCES, SELECT, UPDATE}"
+USE_AUTH_ED25519="${USE_AUTH_ED25519-no}"
+USE_SIMPLE_PASSWORD_CHECK="${USE_SIMPLE_PASSWORD_CHECK-yes}"
+PASSWORD_LENGTH="${PASSWORD_LENGTH-12}"
+PASSWORD_DIGITS="${PASSWORD_DIGITS-1}"
+PASSWORD_LETTERS="${PASSWORD_LETTERS-1}"
+PASSWORD_SPECIALS="${PASSWORD_SPECIALS-1}"
+AUTO_LETS_ENCRYPT="${AUTO_LETS_ENCRYPT-no}"
+SERVER_NAME="${SERVER_NAME-your.domain.net}"
+
+# remove cron jobs
+echo "" > /etc/crontabs/root
 
 # check if there is already some data or no
 FIRST_INSTALL="yes"
@@ -73,7 +76,7 @@ if [ "$FIRST_INSTALL" = "yes" ] ; then
 		echo "[*] ROOT_PASSWORD is not set, random one will be generated."
 		ROOT_PASSWORD=$(random_pass)
 		echo "[*] generated $ROOT_NAME password : $ROOT_PASSWORD"
-		ROOT_PASSWORD=$(echo $ROOT_PASSWORD | sed s/'\\'/'\\\\'/g | sed s/"'"/"\\\'"/g)
+		#ROOT_PASSWORD=$(echo $ROOT_PASSWORD | sed s/'\\'/'\\\\'/g | sed s/"'"/"\\\'"/g)
 	# check policy otherwise
 	elif [ "$USE_SIMPLE_PASSWORD_CHECK" = "yes" ] && [ "$ROOT_METHOD" = "password" ] ; then
 		check_pass "$ROOT_PASSWORD"
@@ -88,7 +91,7 @@ if [ "$FIRST_INSTALL" = "yes" ] ; then
 		echo "[*] USER_NAME is set but USER_PASSWORD isn't, random one will be generated."
 		USER_PASSWORD=$(random_pass)
 		echo "[*] generated $USER_NAME password : $USER_PASSWORD"
-		USER_PASSWORD=$(echo $USER_PASSWORD | sed s/'\\'/'\\\\'/g | sed s/"'"/"\\\'"/g)
+		#USER_PASSWORD=$(echo $USER_PASSWORD | sed s/'\\'/'\\\\'/g | sed s/"'"/"\\\'"/g)
 	# check policy otherwise
 	elif [ ! -z "$USER_NAME" ] && [ "$USE_SIMPLE_PASSWORD_CHECK" = "yes" ] ; then
 		check_pass "$USER_PASSWORD"
@@ -119,7 +122,6 @@ if [ "$FIRST_INSTALL" = "yes" ] ; then
 	fi
 
 	# setup Let's Encrypt
-	echo "" > /etc/crontabs/root
 	if [ "$AUTO_LETS_ENCRYPT" = "yes" ] ; then
 		if [ "$ROOT_METHOD" = "password" ] ; then
 			echo "[!] You need to set ROOT_METHOD to shell when using auto Let's Encrypt"
@@ -141,6 +143,7 @@ if [ "$FIRST_INSTALL" = "yes" ] ; then
 			replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#ssl_" "ssl_"
 			replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#tls_" "tls_"
 		fi
+		echo "0 0 * * * /opt/certbot-renew.sh" >> /etc/crontabs/root
 	fi
 
 	# run mysqld_safe
@@ -150,7 +153,7 @@ if [ "$FIRST_INSTALL" = "yes" ] ; then
 
 	# run mysql_secure_installation
 	echo "[*] executing mysql_secure_installation ..."
-	echo -e "\nn\n\n${ROOT_PASSWORD}\n${ROOT_PASSWORD}\n\n\n\n\n" | mysql_secure_installation #> /dev/null 2>&1
+	echo -e "\nY\nn\nY\nY\nY\nY\n" | mysql_secure_installation
 
 	# remove default mysql user
 	mysql -e "DROP USER 'mysql'@'localhost';"
@@ -176,7 +179,7 @@ if [ "$FIRST_INSTALL" = "yes" ] ; then
 	fi
 
 	# reload privileges
-	mysql -e "FLUSH PRIVILEGES"
+	mysql -e "FLUSH PRIVILEGES" 2> /dev/null
 
 else
 	# run mysqld_safe
@@ -184,9 +187,13 @@ else
 	mysqld_safe &
 fi
 
+# start crond
+crond
+
 # print logs until container stop
 exec tail -f /var/lib/mysql/$(hostname).err
 
 # we have a signal to close the container, let's gracefully stop it
+pkill -TERM crond
 killall -KILL mysqld_safe
 mysqladmin shutdown
