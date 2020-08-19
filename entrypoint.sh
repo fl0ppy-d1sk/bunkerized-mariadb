@@ -58,10 +58,10 @@ PASSWORD_LETTERS="${PASSWORD_LETTERS-1}"
 PASSWORD_SPECIALS="${PASSWORD_SPECIALS-1}"
 AUTO_LETS_ENCRYPT="${AUTO_LETS_ENCRYPT-no}"
 SERVER_NAME="${SERVER_NAME-your.domain.net}"
-REQUIRE_SECURE_TRANSPORT="${REQUIRE_SECURE_TRANSPORT-1}"
-LOCAL_INFILE="${LOCAL_INFILE-0}"
-SKIP_NAME_RESOLVE="${SKIP_NAME_RESOLVE-1}"
-SKIP_SHOW_DATABASE="${SKIP_SHOW_DATABASE-1}"
+REQUIRE_SECURE_TRANSPORT="${REQUIRE_SECURE_TRANSPORT-ON}"
+LOCAL_INFILE="${LOCAL_INFILE-OFF}"
+SKIP_NAME_RESOLVE="${SKIP_NAME_RESOLVE-ON}"
+SKIP_SHOW_DATABASE="${SKIP_SHOW_DATABASE-ON}"
 SECURE_FILE_PRIV="${SECURE_FILE_PRIV-/nowhere}"
 
 # remove cron jobs
@@ -108,7 +108,6 @@ if [ "$FIRST_INSTALL" = "yes" ] ; then
 
 	# initialize database
 	echo "[*] initializing system databases ..."
-	mkdir -p /usr/lib/mariadb/plugin/auth_pam_tool_dir/auth_pam_tool
 	mysql_install_db --skip-test-db --user=mysql --datadir=/var/lib/mysql > /dev/null
 
 	# edit config depending on variables
@@ -160,9 +159,16 @@ if [ "$FIRST_INSTALL" = "yes" ] ; then
 	if [ -n "$SSL" ] ; then
 		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#ssl_" "ssl_"
 		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#tls_" "tls_"
-		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#require_secure_transport" "require_secure_transport"
+		#replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#require_secure_transport" "require_secure_transport"
+	fi
+	if [ ! -d "$SECURE_FILE_PRIV" ] ; then
+		mkdir "$SECURE_FILE_PRIV"
 	fi
 	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%REQUIRE_SECURE_TRANSPORT%" "$REQUIRE_SECURE_TRANSPORT"
+	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#local_infile" "local_infile"
+	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#skip_name_resolve" "skip_name_resolve"
+	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#skip_show_database" "skip_show_database"
+	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#secure_file_priv" "secure_file_priv"
 	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%LOCAL_INFILE%" "$LOCAL_INFILE"
 	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SKIP_NAME_RESOLVE%" "$SKIP_NAME_RESOLVE"
 	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SKIP_SHOW_DATABASE%" "$SKIP_SHOW_DATABASE"

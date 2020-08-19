@@ -127,26 +127,21 @@ Values : *\<any valid path to TLS CA certificate file\>*
 Default value :  
 If `SSL_CERT`, `SSL_KEY` and `SSL_CA` are set to valid paths, MariaDB will enable TLS with the certificate, key and CA provided in those files.
 
-`REQUIRE_SECURE_TRANSPORT`  
-Values : *0* | *1*  
-Default value : *1*  
-If set to *1* and TLS is enabled, TLS connections are enforced for all users connecting through network.
-
 ## Misc
 `LOCAL_INFILE` 
-Values : *0* | *1*  
-Default value : *0*  
-If set to *0*, the LOAD DATA INFILE statements are disabled.
+Values : *OFF* | *ON*  
+Default value : *OFF*  
+If set to *OFF*, the LOAD DATA INFILE statements are disabled.
 
 `SKIP_NAME_RESOLVE`  
-Values : *0* | *1*  
-Default value : *1*  
-If set to *1*, only IP addresses are used when checking the connecting client (no hostname resolved).
+Values : *OFF* | *ON*  
+Default value : *ON*  
+If set to *ON*, only IP addresses are used when checking the connecting client (no hostname resolved).
 
 `SKIP_SHOW_DATABASE`  
-Values : *0* | *1*  
-Default value : *1*  
-If set to *1*, will deny the SHOW DATABASES statement to regular users.
+Values : *OFF* | *ON*  
+Default value : *ON*  
+If set to *ON*, will deny the SHOW DATABASES statement to regular users.
 
 `SECURE_FILE_PRIV`  
 Values : *\<any path\>*  
@@ -154,9 +149,13 @@ Default value : */nowhere*
 If set to something (not blank), all LOAD DATA, SELECT ... INTO and LOAD FILE() statements will only work if the files are in this path.
 
 # TODO
-- Improve documentation
+- change log file path
+- add ROOT_METHOD "both"
+- custom SQL
+- custom CNF
+- improve documentation
 - automatic backup
-- detect injections
+- detect injections ?
 - data at rest encryption
 - fail2ban
 - compile mariadb from sources with security flags
