@@ -58,6 +58,11 @@ PASSWORD_LETTERS="${PASSWORD_LETTERS-1}"
 PASSWORD_SPECIALS="${PASSWORD_SPECIALS-1}"
 AUTO_LETS_ENCRYPT="${AUTO_LETS_ENCRYPT-no}"
 SERVER_NAME="${SERVER_NAME-your.domain.net}"
+REQUIRE_SECURE_TRANSPORT="${REQUIRE_SECURE_TRANSPORT-1}"
+LOCAL_INFILE="${LOCAL_INFILE-0}"
+SKIP_NAME_RESOLVE="${SKIP_NAME_RESOLVE-1}"
+SKIP_SHOW_DATABASE="${SKIP_SHOW_DATABASE-1}"
+SECURE_FILE_PRIV="${SECURE_FILE_PRIV-/nowhere}"
 
 # remove cron jobs
 echo "" > /etc/crontabs/root
@@ -123,6 +128,7 @@ if [ "$FIRST_INSTALL" = "yes" ] ; then
 
 	# setup Let's Encrypt
 	if [ "$AUTO_LETS_ENCRYPT" = "yes" ] ; then
+		SSL="yes"
 		if [ "$ROOT_METHOD" = "password" ] ; then
 			echo "[!] You need to set ROOT_METHOD to shell when using auto Let's Encrypt"
 			exit 1
@@ -140,11 +146,27 @@ if [ "$FIRST_INSTALL" = "yes" ] ; then
 			openssl rsa -in /etc/letsencrypt/live/${SERVER_NAME}/privkey.pem -out /opt/letsencrypt/key.pem
 			chown root:mysql /opt/letsencrypt/*.pem
 			chmod 640 /opt/letsencrypt/*.pem
-			replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#ssl_" "ssl_"
-			replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#tls_" "tls_"
 		fi
 		echo "0 0 * * * /opt/certbot-renew.sh" >> /etc/crontabs/root
+		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SSL_CERT%" "/opt/letsencrypt/cert.pem"
+		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SSL_KEY%" "/opt/letsencrypt/key.pem"
+		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SSL_CA%" "/opt/letsencrypt/ca.pem"
+	elif [ -n "$SSL_CERT" ] && [ -n "$SSL_KEY" ] && [ -n "$SSL_CA" ] ; then
+		SSL="yes"
+		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SSL_CERT%" "$SSL_CERT"
+		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SSL_KEY%" "$SSL_KEY"
+		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SSL_CA%" "$SSL_CA"
 	fi
+	if [ -n "$SSL" ] ; then
+		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#ssl_" "ssl_"
+		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#tls_" "tls_"
+		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#require_secure_transport" "require_secure_transport"
+	fi
+	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%REQUIRE_SECURE_TRANSPORT%" "$REQUIRE_SECURE_TRANSPORT"
+	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%LOCAL_INFILE%" "$LOCAL_INFILE"
+	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SKIP_NAME_RESOLVE%" "$SKIP_NAME_RESOLVE"
+	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SKIP_SHOW_DATABASE%" "$SKIP_SHOW_DATABASE"
+	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SECURE_FILE_PRIV%" "$SECURE_FILE_PRIV"
 
 	# run mysqld_safe
 	echo "[*] starting mysqld_safe ..."

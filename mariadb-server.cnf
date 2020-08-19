@@ -1,38 +1,3 @@
-#
-# These groups are read by MariaDB server.
-# Use it for options that only the server (but not clients) should see
-
-# this is read by the standalone daemon and embedded servers
-[server]
-
-# this is only for the mysqld standalone daemon
-[mysqld]
-local-infile=0
-
-# Galera-related settings
-[galera]
-# Mandatory settings
-#wsrep_on=ON
-#wsrep_provider=
-#wsrep_cluster_address=
-#binlog_format=row
-#default_storage_engine=InnoDB
-#innodb_autoinc_lock_mode=2
-#
-# Allow server to accept connections on all interfaces.
-#
-#bind-address=0.0.0.0
-#
-# Optional setting
-#wsrep_slave_threads=1
-#innodb_flush_log_at_trx_commit=0
-
-# this is only for embedded server
-[embedded]
-
-# This group is only read by MariaDB servers, not by MySQL.
-# If you use the same .cnf file for MySQL and MariaDB,
-# you can put MariaDB-only options here
 [mariadb]
 bind_address = 0.0.0.0
 #plugin_load_add = auth_ed25519
@@ -43,12 +8,12 @@ bind_address = 0.0.0.0
 #simple_password_check_letters_same_case = %PASSWORD_LETTERS%
 #simple_password_check_minimal_length = %PASSWORD_LENGTH%
 #simple_password_check_other_characters = %PASSWORD_SPECIALS%
-#ssl_cert = /opt/letsencrypt/cert.pem
-#ssl_key = /opt/letsencrypt/key.pem
-#ssl_ca = /opt/letsencrypt/ca.pem
+#ssl_cert = %SSL_CERT%
+#ssl_key = %SSL_KEY%
+#ssl_ca = %SSL_CA%
 #tls_version = TLSv1.3
-
-# This group is only read by MariaDB-10.3 servers.
-# If you use the same .cnf file for MariaDB of different versions,
-# use this group for options that older servers don't understand
-[mariadb-10.3]
+#require_secure_transport=%REQUIRE_SECURE_TRANSPORT%
+local_infile=%LOCAL_INFILE%
+skip_name_resolve=%SKIP_NAME_RESOLVE%
+skip_show_database=%SKIP_SHOW_DATABASES%
+secure_file_priv=%SECURE_FILE_PRIV%

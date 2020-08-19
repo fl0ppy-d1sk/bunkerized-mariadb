@@ -18,10 +18,10 @@ docker run -v /where/to/save/databases:/var/lib/mysql -e USER_NAME=myuser bunker
 - Passwords of root and myuser will be displayed on the standard output.  
 - A database named myuser_db will be created with minimal privileges given to myuser.
 
-## Run MariaDB server with TLS support
+## Run MariaDB server with TLS support
 
 ```shell
-docker run -p 3306:3306 -p 80:80 -v /where/to/save/databases:/var/lib/mysql -v /where/to/save/certificates:/etc/letsencrypt -e USER_NAME=myuser -e SERVER_NAME=my.domain.net -e ROOT_METHOD=shell -e AUTO_LETS_ENCRYPT=yes bunkerity
+docker run -p 3306:3306 -p 80:80 -v /where/to/save/databases:/var/lib/mysql -v /where/to/save/certificate:/etc/letsencrypt -e USER_NAME=myuser -e SERVER_NAME=my.domain.net -e ROOT_METHOD=shell -e AUTO_LETS_ENCRYPT=yes bunkerity
 ```
 - my.domain.net must resolve to your server address
 - port 80 needs to be opened because Let's Encrypt use it to check that you own my.domain.net
@@ -47,7 +47,7 @@ This is the password for the admin account. Only valid if `ROOT_METHOD` is set t
 `ROOT_METHOD`  
 Values : *password* | *shell*  
 Default value : *password*  
-How the admin account can connect. If *password* is used, ROOT_PASSWORD must be provided. If it's *shell*, root can login directly within a shell (via unix_socket).
+How the admin account can connect. If *password* is used, `ROOT_PASSWORD` must be provided. If it's *shell*, root can login directly within a shell (via unix_socket).
 
 ## User account
 `USER_NAME`  
@@ -105,17 +105,59 @@ Defines the minimum number of special characters in passwords. Only valid if `US
 `AUTO_LETS_ENCRYPT`  
 Values : *yes* | *no*  
 Default value : *no*  
-If set to yes, TLS will be enabled with automatic certificate generation and renewal through Let's Encrypt.
+If set to yes, TLS will be enabled with automatic certificate generation and renewal through Let's Encrypt. Note that `ROOT_METHOD` must be set to *shell* to allow automatic renewal and reloading MariaDB SSL configuration.
 
 `SERVER_NAME`  
 Values : *\<your domain name\>*  
 Default value : *your.domain.net*  
 If `AUTO_LETS_ENCRYPT` is set to yes, you must set this to your domain name.
 
+`SSL_CERT`  
+Values : *\<any valid path to TLS server certificate file\>*  
+Default value :  
+If `SSL_CERT`, `SSL_KEY` and `SSL_CA` are set to valid paths, MariaDB will enable TLS with the certificate, key and CA provided in those files.
+
+`SSL_KEY`  
+Values : *\<any valid path to TLS key file\>*  
+Default value :  
+If `SSL_CERT`, `SSL_KEY` and `SSL_CA` are set to valid paths, MariaDB will enable TLS with the certificate, key and CA provided in those files.
+
+`SSL_CA`  
+Values : *\<any valid path to TLS CA certificate file\>*  
+Default value :  
+If `SSL_CERT`, `SSL_KEY` and `SSL_CA` are set to valid paths, MariaDB will enable TLS with the certificate, key and CA provided in those files.
+
+`REQUIRE_SECURE_TRANSPORT`  
+Values : *0* | *1*  
+Default value : *1*  
+If set to *1* and TLS is enabled, TLS connections are enforced for all users connecting through network.
+
+## Misc
+`LOCAL_INFILE` 
+Values : *0* | *1*  
+Default value : *0*  
+If set to *0*, the LOAD DATA INFILE statements are disabled.
+
+`SKIP_NAME_RESOLVE`  
+Values : *0* | *1*  
+Default value : *1*  
+If set to *1*, only IP addresses are used when checking the connecting client (no hostname resolved).
+
+`SKIP_SHOW_DATABASE`  
+Values : *0* | *1*  
+Default value : *1*  
+If set to *1*, will deny the SHOW DATABASES statement to regular users.
+
+`SECURE_FILE_PRIV`  
+Values : *\<any path\>*  
+Default value : */nowhere*  
+If set to something (not blank), all LOAD DATA, SELECT ... INTO and LOAD FILE() statements will only work if the files are in this path.
+
 # TODO
 - Improve documentation
-- SSL require
+- automatic backup
+- detect injections
+- data at rest encryption
 - fail2ban
 - compile mariadb from sources with security flags
-- data at rest encryption
 
