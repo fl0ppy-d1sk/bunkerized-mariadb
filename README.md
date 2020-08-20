@@ -1,16 +1,35 @@
 # bunkerized-mariadb
 mariadb based Docker image secure by default.
+Non-exaustive list of features :
 - Configure strong password policy
-- Set privileges for user
-- TLS support with transparent Let's Encrypt automation
-- Support of ed25519 for authentication
+- Set privileges for regular user
+- TLS support with automatic Let's Encrypt automation or custom certificate
 - Remove default data and user
+- State of the art configuration best practises
+- Support of ed25519 for authentication
 - Based on alpine
 - Easy to configure with environment variables
 
+# Table of contents
+- [bunkerized-mariadb](#bunkerized-mariadb)
+- [Table of contents](#table-of-contents)
+- [Quickstart guide](#quickstart-guide)
+  * [Default settings with random passwords](#default-settings-with-random-passwords)
+  * [Default settings with choosen passwords](#default-settings-with-choosen-passwords)
+  * [TLS support with automatic Let's Encrypt](#tls-support-with-automatic-let-s-encrypt)
+- [List of environment variables](#list-of-environment-variables)
+  * [Admin account](#admin-account)
+  * [User account](#user-account)
+  * [Passwords](#passwords)
+  * [TLS](#tls)
+  * [Misc](#misc)
+- [Execute custom SQL files](#execute-custom-sql-files)
+- [Include custom MariaDB configurations](#include-custom-mariadb-configurations)
+- [TODO](#todo)
+
 # Quickstart guide
 
-## Run MariaDB server and create a user
+## Default settings with random passwords
 
 ```shell
 docker run -v /where/to/save/databases:/var/lib/mysql -e USER_NAME=myuser bunkerity/bunkerized-mariadb
@@ -18,10 +37,17 @@ docker run -v /where/to/save/databases:/var/lib/mysql -e USER_NAME=myuser bunker
 - Passwords of root and myuser will be displayed on the standard output.  
 - A database named myuser_db will be created with minimal privileges given to myuser.
 
-## Run MariaDB server with TLS support
+## Default settings with choosen passwords
+```shell
+docker run -v /where/to/save/databases:/var/lib/mysql -e USER_NAME=myuser -e USER_PASSWORD=userpass -e ROOT_PASSWORD=rootpass bunkerity/bunkerized-mariadb
+```
+- The passwords must follow the password policy (default : 12 chars long, at least 1 letter, 1 digit and 1 special char)
+- See the passwords environment variables to adjust the policy to your needs
+
+## TLS support with automatic Let's Encrypt
 
 ```shell
-docker run -p 3306:3306 -p 80:80 -v /where/to/save/databases:/var/lib/mysql -v /where/to/save/certificate:/etc/letsencrypt -e USER_NAME=myuser -e SERVER_NAME=my.domain.net -e ROOT_METHOD=shell -e AUTO_LETS_ENCRYPT=yes bunkerity
+docker run -p 3306:3306 -p 80:80 -v /where/to/save/databases:/var/lib/mysql -v /where/to/save/certificate:/etc/letsencrypt -e USER_NAME=myuser -e SERVER_NAME=my.domain.net -e AUTO_LETS_ENCRYPT=yes bunkerity
 ```
 - my.domain.net must resolve to your server address
 - port 80 needs to be opened because Let's Encrypt use it to check that you own my.domain.net
@@ -37,12 +63,12 @@ This is the username for the admin account. Can be interesting to set it to some
 `ROOT_HOST`  
 Values : *%* | *\<ip address\>* | *\<domain name\>*  
 Default value : *localhost*  
-IP address or domain name from where the admin account can connect (% means anywhere). Only valid if `ROOT_METHOD` is set to *password*.  
+IP address or domain name from where the admin account can connect (% means anywhere). Only valid if `ROOT_METHOD` is set to *password* or *both*.  
 
 `ROOT_PASSWORD`  
 Values : *\<any valid password\>*
 Default value : *random password*  
-This is the password for the admin account. Only valid if `ROOT_METHOD` is set to *password* and it meets the policy constraints.
+This is the password for the admin account. Only valid if `ROOT_METHOD` is set to *password* and it meets the password policy constraints.
 
 `ROOT_METHOD`  
 Values : *password* | *shell* | *both*  
@@ -51,21 +77,21 @@ How the admin account can connect. If *password* is used, `ROOT_PASSWORD` must b
 
 ## User account
 `USER_NAME`  
-Values : *\<any valid username\>*
+Values : *\<any valid username\>*  
 Default value :  
 This is the username of the regular account to be created. By default, `USER_NAME` is blank so no regular account is created.
 
 `USER_PASSWORD`  
 Values : *\<any valid password\>*  
 Default value : *random password*  
-This is the password for the regular account. Only valid if `USER_NAME` is not empty and it meets the policy constraints.
+This is the password for the regular account. Only valid if `USER_NAME` is not empty and it meets the password policy constraints.
 
 `USER_DATABASE`  
 Values : *\<any valid database name\>*  
 Default value : *[USER_NAME]_db*  
-Name of the database to be created for the user specified in USER_NAME.
+Name of the database to be created for the user specified in `USER_NAME`.
 
-*USER_PRIVILEGES*  
+`USER_PRIVILEGES`  
 Values : *\<list of privileges separated by comma\>*  
 Default value : *ALTER, CREATE, DELETE, DROP, INDEX, INSERT, REFERENCES, SELECT, UPDATE*  
 List of privileges granted to the user `USER_NAME` on the database `USER_DATABASE`.
@@ -101,11 +127,11 @@ Values : *\<any positive numeric value\>* | *0*
 Default value : *1*  
 Defines the minimum number of special characters in passwords. Only valid if `USE_SIMPLE_PASSWORD_CHECK` is set to yes.
 
-## TLS
+## TLS
 `AUTO_LETS_ENCRYPT`  
 Values : *yes* | *no*  
 Default value : *no*  
-If set to yes, TLS will be enabled with automatic certificate generation and renewal through Let's Encrypt. Note that `ROOT_METHOD` must be set to *shell* to allow automatic renewal and reloading MariaDB SSL configuration.
+If set to yes, TLS will be enabled with automatic certificate generation and renewal through Let's Encrypt. Note that `ROOT_METHOD` must be set to *shell* or *both* to allow automatic renewal and reloading MariaDB SSL configuration.
 
 `SERVER_NAME`  
 Values : *\<your domain name\>*  
@@ -133,7 +159,7 @@ Default value : *yes*
 If set to *yes* and TLS is enabled then the regular user (if specified with `USER_NAME`) and the root account are forced to use TLS.
 
 ## Misc
-`LOCAL_INFILE` 
+`LOCAL_INFILE`  
 Values : *OFF* | *ON*  
 Default value : *OFF*  
 If set to *OFF*, the LOAD DATA INFILE statements are disabled.
@@ -159,6 +185,9 @@ You can execute custom .sql files by mouting them inside the /custom.sql.d direc
 
 ```shell
 docker run ... -v /path/to/custom/sql/files:/custom.sql.d ... bunkerity/bunkerized-mariadb
+```
+
+Please note that the files will only be executed once after MariaDB has been setup. They won't be executed if a database already exists in the /var/lib/mysql directory.
 
 # Include custom MariaDB configurations
 
@@ -169,8 +198,6 @@ docker run ... -v /path/to/custom/cnf/files:/custom.cnf.d ... bunkerity/bunkeriz
 ```
 
 # TODO
-- improve documentation (migrate from classic mariadb, dump, ...)
-- automatic backup
 - detect injections ?
 - data at rest encryption
 - fail2ban
