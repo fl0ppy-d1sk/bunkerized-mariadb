@@ -44,10 +44,25 @@ function random_pass() {
 	echo "$pass"
 }
 
+# trap SIGTERM and SIGINT
+function trap_exit() {
+        echo "[*] Catched stop operation"
+        echo "[*] Stopping crond ..."
+        pkill -TERM crond
+        if [ "$USE_FAIL2BAN" = "yes" ] ; then
+                echo "[*] Stopping fail2ban"
+                fail2ban-client stop > /dev/null
+        fi
+        echo "[*] Stopping mariadb ..."
+        mysqladmin shutdown
+        pkill -TERM tail
+}
+trap "trap_exit" TERM INT
+
 # default values
 ROOT_NAME="${ROOT_NAME-root}"
 ROOT_HOST="${ROOT_HOST-localhost}"
-ROOT_METHOD="${ROOT_METHOD-password}"
+ROOT_METHOD="${ROOT_METHOD-both}"
 USER_DATABASE="${USER_DATABASE-${USER_NAME}_db}"
 USER_PRIVILEGES="${USER_PRIVILEGES-ALTER, CREATE, DELETE, DROP, INDEX, INSERT, REFERENCES, SELECT, UPDATE}"
 USE_AUTH_ED25519="${USE_AUTH_ED25519-no}"
@@ -63,6 +78,7 @@ LOCAL_INFILE="${LOCAL_INFILE-OFF}"
 SKIP_NAME_RESOLVE="${SKIP_NAME_RESOLVE-ON}"
 SKIP_SHOW_DATABASE="${SKIP_SHOW_DATABASE-ON}"
 SECURE_FILE_PRIV="${SECURE_FILE_PRIV-/nowhere}"
+REQUIRE_SSL="${REQUIRE_SSL-yes}"
 
 # remove cron jobs
 echo "" > /etc/crontabs/root
@@ -75,15 +91,13 @@ fi
 
 # stuff to do only on first install
 if [ "$FIRST_INSTALL" = "yes" ] ; then
-
 	# random ROOT_PASSWORD if not set
-	if [ -z "$ROOT_PASSWORD" ] && [ "$ROOT_METHOD" = "password" ] ; then
+	if [ -z "$ROOT_PASSWORD" ] && { [ "$ROOT_METHOD" = "password" ] || [ "$ROOT_METHOD" = "both" ]; } ; then
 		echo "[*] ROOT_PASSWORD is not set, random one will be generated."
 		ROOT_PASSWORD=$(random_pass)
 		echo "[*] generated $ROOT_NAME password : $ROOT_PASSWORD"
-		#ROOT_PASSWORD=$(echo $ROOT_PASSWORD | sed s/'\\'/'\\\\'/g | sed s/"'"/"\\\'"/g)
 	# check policy otherwise
-	elif [ "$USE_SIMPLE_PASSWORD_CHECK" = "yes" ] && [ "$ROOT_METHOD" = "password" ] ; then
+	elif [ "$USE_SIMPLE_PASSWORD_CHECK" = "yes" ] && { [ "$ROOT_METHOD" = "password" ] || [ "$ROOT_METHOD" = "both" ]; } ; then
 		check_pass "$ROOT_PASSWORD"
 		if [ $? -ne 0 ] ; then
 			echo "ROOT_PASSWORD does not meet the policy requirements."
@@ -110,73 +124,78 @@ if [ "$FIRST_INSTALL" = "yes" ] ; then
 	echo "[*] initializing system databases ..."
 	mysql_install_db --skip-test-db --user=mysql --datadir=/var/lib/mysql > /dev/null
 
-	# edit config depending on variables
-	cp /opt/mariadb-server.cnf /etc/my.cnf.d/mariadb-server.cnf
-	if [ "$USE_AUTH_ED25519" = "yes" ] ; then
-		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#plugin_load_add = auth" "plugin_load_add = auth"
-		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#ed25519=" "ed25519="
-	fi
-	if [ "$USE_SIMPLE_PASSWORD_CHECK" = "yes" ] ; then
-		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#plugin_load_add = simple" "plugin_load_add = simple"
-		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#simple_password" "simple_password"
-		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%PASSWORD_DIGITS%" "$PASSWORD_DIGITS"
-		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%PASSWORD_LETTERS%" "$PASSWORD_LETTERS"
-		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%PASSWORD_LENGTH%" "$PASSWORD_LENGTH"
-		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%PASSWORD_SPECIALS%" "$PASSWORD_SPECIALS"
-	fi
+fi
 
-	# setup Let's Encrypt
-	if [ "$AUTO_LETS_ENCRYPT" = "yes" ] ; then
-		SSL="yes"
-		if [ "$ROOT_METHOD" = "password" ] ; then
-			echo "[!] You need to set ROOT_METHOD to shell when using auto Let's Encrypt"
-			exit 1
-		fi
-		if [ ! -d /opt/letsencrypt ] ; then
-			mkdir /opt/letsencrypt
-			chown root:mysql /opt/letsencrypt
-		fi
-		if [ -f /etc/letsencrypt/live/${SERVER_NAME}/fullchain.pem ] ; then
-			/opt/certbot-renew.sh
-		else
-			certbot certonly --standalone -n --preferred-challenges http -d $SERVER_NAME --email contact@$SERVER_NAME --agree-tos
-			cp /etc/letsencrypt/live/${SERVER_NAME}/fullchain.pem /opt/letsencrypt/ca.pem
-			cp /etc/letsencrypt/live/${SERVER_NAME}/cert.pem /opt/letsencrypt/cert.pem
-			openssl rsa -in /etc/letsencrypt/live/${SERVER_NAME}/privkey.pem -out /opt/letsencrypt/key.pem
-			chown root:mysql /opt/letsencrypt/*.pem
-			chmod 640 /opt/letsencrypt/*.pem
-		fi
-		echo "0 0 * * * /opt/certbot-renew.sh" >> /etc/crontabs/root
-		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SSL_CERT%" "/opt/letsencrypt/cert.pem"
-		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SSL_KEY%" "/opt/letsencrypt/key.pem"
-		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SSL_CA%" "/opt/letsencrypt/ca.pem"
-	elif [ -n "$SSL_CERT" ] && [ -n "$SSL_KEY" ] && [ -n "$SSL_CA" ] ; then
-		SSL="yes"
-		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SSL_CERT%" "$SSL_CERT"
-		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SSL_KEY%" "$SSL_KEY"
-		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SSL_CA%" "$SSL_CA"
+# edit config depending on variables and setup TLS
+cp /opt/mariadb-server.cnf /etc/my.cnf.d/mariadb-server.cnf
+if [ "$USE_AUTH_ED25519" = "yes" ] ; then
+	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#plugin_load_add = auth" "plugin_load_add = auth"
+	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#ed25519=" "ed25519="
+fi
+if [ "$USE_SIMPLE_PASSWORD_CHECK" = "yes" ] ; then
+	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#plugin_load_add = simple" "plugin_load_add = simple"
+	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#simple_password" "simple_password"
+	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%PASSWORD_DIGITS%" "$PASSWORD_DIGITS"
+	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%PASSWORD_LETTERS%" "$PASSWORD_LETTERS"
+	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%PASSWORD_LENGTH%" "$PASSWORD_LENGTH"
+	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%PASSWORD_SPECIALS%" "$PASSWORD_SPECIALS"
+fi
+if [ "$AUTO_LETS_ENCRYPT" = "yes" ] ; then
+	SSL="yes"
+	if [ "$ROOT_METHOD" = "password" ] ; then
+		echo "[!] You need to set ROOT_METHOD to shell or both when using auto Let's Encrypt"
+	exit 1
 	fi
-	if [ -n "$SSL" ] ; then
-		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#ssl_" "ssl_"
-		replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#tls_" "tls_"
-		#replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#require_secure_transport" "require_secure_transport"
+	if [ ! -d /opt/letsencrypt ] ; then
+		mkdir /opt/letsencrypt
+		chown root:mysql /opt/letsencrypt
 	fi
-	if [ ! -d "$SECURE_FILE_PRIV" ] ; then
-		mkdir "$SECURE_FILE_PRIV"
+	if [ -f /etc/letsencrypt/live/${SERVER_NAME}/fullchain.pem ] ; then
+		/opt/certbot-renew.sh
+	else
+		certbot certonly --standalone -n --preferred-challenges http -d $SERVER_NAME --email contact@$SERVER_NAME --agree-tos
+		cp /etc/letsencrypt/live/${SERVER_NAME}/fullchain.pem /opt/letsencrypt/ca.pem
+		cp /etc/letsencrypt/live/${SERVER_NAME}/cert.pem /opt/letsencrypt/cert.pem
+		openssl rsa -in /etc/letsencrypt/live/${SERVER_NAME}/privkey.pem -out /opt/letsencrypt/key.pem
+		chown root:mysql /opt/letsencrypt/*.pem
+		chmod 640 /opt/letsencrypt/*.pem
 	fi
-	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%REQUIRE_SECURE_TRANSPORT%" "$REQUIRE_SECURE_TRANSPORT"
-	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#local_infile" "local_infile"
-	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#skip_name_resolve" "skip_name_resolve"
-	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#skip_show_database" "skip_show_database"
-	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#secure_file_priv" "secure_file_priv"
-	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%LOCAL_INFILE%" "$LOCAL_INFILE"
-	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SKIP_NAME_RESOLVE%" "$SKIP_NAME_RESOLVE"
-	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SKIP_SHOW_DATABASE%" "$SKIP_SHOW_DATABASE"
-	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SECURE_FILE_PRIV%" "$SECURE_FILE_PRIV"
+	echo "0 0 * * * /opt/certbot-renew.sh" >> /etc/crontabs/root
+	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SSL_CERT%" "/opt/letsencrypt/cert.pem"
+	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SSL_KEY%" "/opt/letsencrypt/key.pem"
+	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SSL_CA%" "/opt/letsencrypt/ca.pem"
+elif [ -n "$SSL_CERT" ] && [ -n "$SSL_KEY" ] && [ -n "$SSL_CA" ] ; then
+	SSL="yes"
+	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SSL_CERT%" "$SSL_CERT"
+	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SSL_KEY%" "$SSL_KEY"
+	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SSL_CA%" "$SSL_CA"
+fi
+if [ -n "$SSL" ] ; then
+	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#ssl_" "ssl_"
+	replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#tls_" "tls_"
+	#replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#require_secure_transport" "require_secure_transport"
+fi
+if [ ! -d "$SECURE_FILE_PRIV" ] ; then
+	mkdir "$SECURE_FILE_PRIV"
+fi
+replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%REQUIRE_SECURE_TRANSPORT%" "$REQUIRE_SECURE_TRANSPORT"
+replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#local_infile" "local_infile"
+replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#skip_name_resolve" "skip_name_resolve"
+replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#skip_show_database" "skip_show_database"
+replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "#secure_file_priv" "secure_file_priv"
+replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%LOCAL_INFILE%" "$LOCAL_INFILE"
+replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SKIP_NAME_RESOLVE%" "$SKIP_NAME_RESOLVE"
+replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SKIP_SHOW_DATABASE%" "$SKIP_SHOW_DATABASE"
+replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SECURE_FILE_PRIV%" "$SECURE_FILE_PRIV"
 
-	# run mysqld_safe
-	echo "[*] starting mysqld_safe ..."
-	mysqld_safe &
+
+# run mysqld_safe
+echo "[*] starting mysqld_safe ..."
+mysqld_safe &
+
+
+if [ "$FIRST_INSTALL" = "yes" ] ; then
+	# wait before mysqld initialize
 	sleep 3
 
 	# run mysql_secure_installation
@@ -194,34 +213,38 @@ if [ "$FIRST_INSTALL" = "yes" ] ; then
 		else
 			mysql -e "GRANT $USER_PRIVILEGES ON $USER_DATABASE.* TO '$USER_NAME'@'%' IDENTIFIED BY '$USER_PASSWORD';"
 		fi
+		if [ -n "$SSL" ] && [ "$REQUIRE_SSL" = "yes" ] ; then
+			mysql -e "ALTER USER '$USER_NAME'@'%' REQUIRE SSL;";
+		fi
 	fi
 
+	# run custom sql files
+	for file in $(ls /custom.sql.d/*.sql) ; do
+		mysql < "$file"
+	done
+
 	# setup root user
-	if [ "$USE_AUTH_ED25519" = "yes" ] && [ "$ROOT_METHOD" = "password" ] ; then
+	if [ "$USE_AUTH_ED25519" = "yes" ] && { [ "$ROOT_METHOD" = "password" ] || [ "$ROOT_METHOD" = "both" ]; } ; then
 		mysql -e "GRANT ALL PRIVILEGES ON *.* TO '$ROOT_NAME'@'$ROOT_HOST' IDENTIFIED VIA ed25519 USING PASSWORD('$ROOT_PASSWORD') WITH GRANT OPTION;"
-	elif [ "$ROOT_METHOD" = "password" ] ; then
+	elif [ "$ROOT_METHOD" = "password" ] || [ "$ROOT_METHOD" = "both" ] ; then
 		mysql -e "GRANT ALL PRIVILEGES ON *.* TO '$ROOT_NAME'@'$ROOT_HOST' IDENTIFIED BY '$ROOT_PASSWORD' WITH GRANT OPTION;"
 	fi
-	if [ "$ROOT_METHOD" = "password" ] && [ "$ROOT_HOST" != "localhost" ] ; then
+	if [ -n "$SSL" ] && [ "$REQUIRE_SSL" = "yes" ] && { [ "$ROOT_METHOD" = "password" ] || [ "$ROOT_METHOD" = "both" ]; } ; then
+		mysql -e "ALTER USER '$ROOT_NAME'@'$ROOT_HOST' REQUIRE SSL;";
+	fi
+	if [ "$ROOT_METHOD" = "password" ] ; then
 		mysql -e "DELETE FROM mysql.user WHERE plugin = 'unix_socket';"
 	fi
 
 	# reload privileges
-	mysql -e "FLUSH PRIVILEGES" 2> /dev/null
-
-else
-	# run mysqld_safe
-	echo "[*] starting mysqld_safe ..."
-	mysqld_safe &
+	mysql -e "FLUSH PRIVILEGES;" 2> /dev/null
 fi
 
 # start crond
 crond
 
 # print logs until container stop
-exec tail -f /var/lib/mysql/$(hostname).err
+exec tail -f /var/lib/mysql/mariadb.log
 
-# we have a signal to close the container, let's gracefully stop it
-pkill -TERM crond
-killall -KILL mysqld_safe
-mysqladmin shutdown
+# we're done
+exit 0

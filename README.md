@@ -45,9 +45,9 @@ Default value : *random password*
 This is the password for the admin account. Only valid if `ROOT_METHOD` is set to *password* and it meets the policy constraints.
 
 `ROOT_METHOD`  
-Values : *password* | *shell*  
-Default value : *password*  
-How the admin account can connect. If *password* is used, `ROOT_PASSWORD` must be provided. If it's *shell*, root can login directly within a shell (via unix_socket).
+Values : *password* | *shell* | *both*  
+Default value : *both*  
+How the admin account can connect. If *password* is used, `ROOT_PASSWORD` must be provided. If it's *shell*, root can login directly within a shell (via unix_socket). To allow both password and shell access use *both* (the default).
 
 ## User account
 `USER_NAME`  
@@ -127,6 +127,11 @@ Values : *\<any valid path to TLS CA certificate file\>*
 Default value :  
 If `SSL_CERT`, `SSL_KEY` and `SSL_CA` are set to valid paths, MariaDB will enable TLS with the certificate, key and CA provided in those files.
 
+`REQUIRE_SSL`  
+Values : *yes* | *no*  
+Default value : *yes*  
+If set to *yes* and TLS is enabled then the regular user (if specified with `USER_NAME`) and the root account are forced to use TLS.
+
 ## Misc
 `LOCAL_INFILE` 
 Values : *OFF* | *ON*  
@@ -148,15 +153,27 @@ Values : *\<any path\>*
 Default value : */nowhere*  
 If set to something (not blank), all LOAD DATA, SELECT ... INTO and LOAD FILE() statements will only work if the files are in this path.
 
+# Execute custom SQL files
+
+You can execute custom .sql files by mouting them inside the /custom.sql.d directory :
+
+```shell
+docker run ... -v /path/to/custom/sql/files:/custom.sql.d ... bunkerity/bunkerized-mariadb
+
+# Include custom MariaDB configurations
+
+You can add custom .cnf files by mounting them inside the /custom.cnf.d directory :
+
+```shell
+docker run ... -v /path/to/custom/cnf/files:/custom.cnf.d ... bunkerity/bunkerized-mariadb
+```
+
 # TODO
-- change log file path
-- add ROOT_METHOD "both"
-- custom SQL
-- custom CNF
-- improve documentation
+- improve documentation (migrate from classic mariadb, dump, ...)
 - automatic backup
 - detect injections ?
 - data at rest encryption
 - fail2ban
 - compile mariadb from sources with security flags
+- custom image
 

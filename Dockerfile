@@ -10,6 +10,8 @@ RUN chmod +x /opt/*.sh
 
 VOLUME /var/lib/mysql
 VOLUME /etc/letsencrypt
+VOLUME /custom.cnf.d
+VOLUME /custom.sql.d
 
 EXPOSE 80
 EXPOSE 3306
