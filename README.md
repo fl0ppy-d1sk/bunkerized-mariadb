@@ -1,5 +1,9 @@
 # bunkerized-mariadb
+
+<img src="https://github.com/bunkerity/bunkerized-mariadb/blob/master/logo.png?raw=true" width="425" />
+
 mariadb based Docker image secure by default.
+
 Non-exaustive list of features :
 - Configure strong password policy
 - Set privileges for regular user
