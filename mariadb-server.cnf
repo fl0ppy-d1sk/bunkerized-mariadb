@@ -1,6 +1,6 @@
 [mariadb]
 bind_address = 0.0.0.0
-log_error = /var/lib/mysql/mariadb.log
+log_error = /var/log/mariadb.log
 #plugin_load_add = auth_ed25519
 #ed25519=FORCE_PLUS_PERMANENT
 #plugin_load_add = simple_password_check

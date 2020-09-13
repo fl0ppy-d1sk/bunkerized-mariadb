@@ -183,6 +183,16 @@ Values : *\<any path\>*
 Default value : */nowhere*  
 If set to something (not blank), all LOAD DATA, SELECT ... INTO and LOAD FILE() statements will only work if the files are in this path.
 
+`LOGROTATE_MINSIZE`  
+Values : *x* | *xk* | *xM* | *xG*  
+Default value : 10M  
+The minimum size of a log file before being rotated (no letter = bytes, k = kilobytes, M = megabytes, G = gigabytes).
+
+`LOGROTATE_MAXAGE`  
+Values : *\<any integer\>*  
+Default value : 7  
+The number of days before rotated files are deleted.
+
 # Execute custom SQL files
 
 You can execute custom .sql files by mouting them inside the /custom.sql.d directory :
@@ -202,9 +212,8 @@ docker run ... -v /path/to/custom/cnf/files:/custom.cnf.d ... bunkerity/bunkeriz
 ```
 
 # TODO
-- detect injections ?
 - data at rest encryption
-- fail2ban
+- fail2ban ?
+- libinjection ?
 - compile mariadb from sources with security flags
 - custom image
-

@@ -49,10 +49,6 @@ function trap_exit() {
         echo "[*] Catched stop operation"
         echo "[*] Stopping crond ..."
         pkill -TERM crond
-        if [ "$USE_FAIL2BAN" = "yes" ] ; then
-                echo "[*] Stopping fail2ban"
-                fail2ban-client stop > /dev/null
-        fi
         echo "[*] Stopping mariadb ..."
         mysqladmin shutdown
         pkill -TERM tail
@@ -82,6 +78,19 @@ REQUIRE_SSL="${REQUIRE_SSL-yes}"
 
 # remove cron jobs
 echo "" > /etc/crontabs/root
+
+# copy stub confs
+cp /opt/logrotate.conf /etc/logrotate.conf
+LOGROTATE_MINSIZE="${LOGROTATE_MINSIZE-10M}"
+LOGROTATE_MAXAGE="${LOGROTATE_MAXAGE-7}"
+
+# setup log file
+if [ ! -f "/var/log/mariadb.log" ] ; then
+	touch /var/log/mariadb.log
+	chmod 760 /var/log/mariadb.log
+	chown root:mysql /var/log/mariadb.log
+fi
+
 
 # check if there is already some data or no
 FIRST_INSTALL="yes"
@@ -188,11 +197,9 @@ replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SKIP_NAME_RESOLVE%" "$SKIP_
 replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SKIP_SHOW_DATABASE%" "$SKIP_SHOW_DATABASE"
 replace_in_file "/etc/my.cnf.d/mariadb-server.cnf" "%SECURE_FILE_PRIV%" "$SECURE_FILE_PRIV"
 
-
 # run mysqld_safe
 echo "[*] starting mysqld_safe ..."
 mysqld_safe &
-
 
 if [ "$FIRST_INSTALL" = "yes" ] ; then
 	# wait before mysqld initialize
@@ -243,8 +250,15 @@ fi
 # start crond
 crond
 
+# setup logrotate
+replace_in_file "/etc/logrotate.conf" "%LOGROTATE_MAXAGE%" "$LOGROTATE_MAXAGE"
+replace_in_file "/etc/logrotate.conf" "%LOGROTATE_MINSIZE%" "$LOGROTATE_MINSIZE"
+echo "0 0 * * * logrotate -f /etc/logrotate.conf > /dev/null 2>&1" >> /etc/crontabs/root
+
 # print logs until container stop
-exec tail -f /var/lib/mysql/mariadb.log
+tail -f /var/log/mariadb.log &
+wait $!
 
 # we're done
+echo "[*] bunkerized-mariadb stopped"
 exit 0
